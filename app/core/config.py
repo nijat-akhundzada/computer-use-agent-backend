@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     COMPUTER_USE_IMAGE: str = (
         "ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest"
     )
+    AGENT_MODE: str = "mock"  # "mock" or "anthropic"
 
 
 settings = Settings()

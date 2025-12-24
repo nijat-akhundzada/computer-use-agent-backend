@@ -28,6 +28,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       PUBLIC_HOST: localhost
       COMPUTER_USE_IMAGE: ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest
+      ANTHROPIC_API_KEY: 
+      ANTHROPIC_MODEL: claude-3-5-sonnet-latest
     depends_on:
       - db
       - redis

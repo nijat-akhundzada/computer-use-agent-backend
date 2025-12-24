@@ -1,9 +1,9 @@
-import os
 import time
 
 from sqlalchemy.orm import Session as OrmSession
 
-from app.agent_engine import run_computer_use_turn
+from app.agent_engine.mock_agent import run_mock_turn
+from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.events import publish_event
 from app.core.locks import acquire_session_lock, release_session_lock
@@ -37,32 +37,35 @@ def _handle_job(job: dict):
         db.commit()
         user_msg = db.get(MessageModel, message_id)
         user_text = user_msg.content if user_msg else ""
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
-        if not api_key:
-            publish_event(
+        if settings.AGENT_MODE == "mock":
+            run_mock_turn(
                 db=db,
                 session_id=s.id,
-                event_type="log",
-                payload={"msg": "Missing ANTHROPIC_API_KEY"},
+                user_text=user_text,
             )
-            raise RuntimeError("ANTHROPIC_API_KEY is required")
+        else:
+            import os
 
-        if not s.vnc_host or not s.vnc_port:
-            raise RuntimeError("Session VM not ready (missing VNC info)")
+            from app.agent_engine import run_computer_use_turn
 
-        run_computer_use_turn(
-            db=db,
-            session_id=s.id,
-            user_text=user_text,
-            vm=run_computer_use_turn.VmInfo(
-                vnc_host=s.vnc_host,
-                vnc_port=s.vnc_port,
-                novnc_url=s.novnc_url or "",
-            ),
-            model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
-            anthropic_api_key=api_key,
-        )
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise RuntimeError("ANTHROPIC_API_KEY missing")
+
+            run_computer_use_turn(
+                db=db,
+                session_id=s.id,
+                user_text=user_text,
+                vm=run_computer_use_turn.VmInfo(
+                    vnc_host=s.vnc_host,
+                    vnc_port=s.vnc_port,
+                    novnc_url=s.novnc_url or "",
+                ),
+                model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest"),
+                anthropic_api_key=api_key,
+            )
+
         publish_event(
             db=db, session_id=s.id, event_type="status", payload={"status": "running"}
         )
