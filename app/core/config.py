@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@db:5432/agent"
     REDIS_URL: str = "redis://redis:6379/0"
     ENV: str = "dev"
+    PUBLIC_HOST: str = "localhost"  # host where browser accesses mapped ports
+    COMPUTER_USE_IMAGE: str = (
+        "ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest"
+    )
 
 
 settings = Settings()

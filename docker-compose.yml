@@ -6,6 +6,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/agent
       REDIS_URL: redis://redis:6379/0
+      PUBLIC_HOST: localhost
+      COMPUTER_USE_IMAGE: ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest
     ports:
       - "8000:8000"
     depends_on:
@@ -15,6 +17,7 @@ services:
       - ./app:/app/app
       - ./migrations:/app/migrations
       - ./alembic.ini:/app/alembic.ini
+      - /var/run/docker.sock:/var/run/docker.sock
 
   worker:
     build:
@@ -23,11 +26,14 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/agent
       REDIS_URL: redis://redis:6379/0
+      PUBLIC_HOST: localhost
+      COMPUTER_USE_IMAGE: ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest
     depends_on:
       - db
       - redis
     volumes:
       - ./app:/app/app
+      - /var/run/docker.sock:/var/run/docker.sock
 
   db:
     image: postgres:16
