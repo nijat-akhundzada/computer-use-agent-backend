@@ -16,3 +16,17 @@ class SessionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MessageIn(BaseModel):
+    content: str
+
+
+class MessageOut(BaseModel):
+    id: UUID
+    session_id: UUID
+    role: str
+    content: str
+
+    class Config:
+        from_attributes = True

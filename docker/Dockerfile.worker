@@ -9,4 +9,4 @@ RUN pip install --no-cache-dir -U pip \
     && pip install --no-cache-dir .
 
 COPY app /app/app
-CMD ["python", "-c", "print('worker placeholder - next step')"]
+CMD ["python", "-m", "app.worker.runner"]
