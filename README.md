@@ -94,7 +94,7 @@ computer-use-backend/
 ├── frontend/                # Demo HTML/JS UI
 │   └── index.html
 │
-├── alembic/                 # Database migrations
+├── migrations/              # Database migrations
 ├── docker/                  # Dockerfiles
 ├── docker-compose.yml
 ├── pyproject.toml
