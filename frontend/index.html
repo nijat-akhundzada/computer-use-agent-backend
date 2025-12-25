@@ -22,7 +22,7 @@
         border-radius: 8px;
       }
 
-      /* ✅ Live Events (SSE) styling */
+      /* Logs / SSE + curls */
       pre {
         height: 260px;
         overflow-y: auto;
@@ -39,7 +39,6 @@
 
         white-space: pre-wrap;
         word-break: break-word;
-
         overscroll-behavior: contain;
       }
 
@@ -88,8 +87,89 @@
 
       a { color: #0b5fff; text-decoration: none; }
       a:hover { text-decoration: underline; }
+
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+      /* ✅ Chat bubbles */
+      #historyBox {
+        height: 260px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+        overscroll-behavior: contain;
+      }
+
+      #historyList {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .msg-row {
+        display: flex;
+      }
+
+      .msg-row.user {
+        justify-content: flex-end;
+      }
+
+      .msg-row.assistant {
+        justify-content: flex-start;
+      }
+
+      .bubble {
+        max-width: 82%;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid #e5e5e5;
+        background: #f7f7f8;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+      }
+
+      .msg-row.user .bubble {
+        background: #e9f2ff;
+        border-color: #cfe2ff;
+      }
+
+      .bubble-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+
+      .role-pill {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid #ddd;
+        background: #fff;
+        color: #555;
+      }
+
+      .msg-row.user .role-pill {
+        border-color: #cfe2ff;
+      }
+
+      .time {
+        font-size: 11px;
+        color: #888;
+        white-space: nowrap;
+      }
+
+      .bubble-body {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #111;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
     </style>
   </head>
+
   <body>
     <h2>Computer Use Agent — Session Demo</h2>
 
@@ -127,7 +207,7 @@
           <div class="small">Desktop URL (noVNC):</div>
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
             <a id="novncLink" href="#" target="_blank" rel="noopener noreferrer">Open desktop in new tab</a>
-            <span class="small" id="novncUrlText">-</span>
+            <span class="small mono" id="novncUrlText">-</span>
           </div>
           <div class="small" style="margin-top:6px;">
             Note: embedding noVNC in an iframe is often blocked by X-Frame-Options / CSP. Opening in a new tab is the reliable approach.
@@ -151,12 +231,17 @@
 
         <h3 style="margin-top:16px;">Chat</h3>
         <div class="box">
-          <div
-            id="history"
-            class="small"
-            style="white-space:pre-wrap; margin-bottom:10px;"
-          ></div>
-          <div style="display:flex; gap:10px;">
+          <div class="small" style="margin-bottom:6px;">
+            History <span class="small" style="color:#999;">(persisted)</span>
+          </div>
+
+          <div id="historyBox">
+            <div id="historyList">
+              <div class="small" style="color:#777;">(no messages yet)</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:10px;">
             <input id="msg" placeholder="e.g. Open browser and search for ..." />
             <button id="send" disabled>Send</button>
           </div>
@@ -171,7 +256,6 @@
 
       const $ = (id) => document.getElementById(id);
 
-      // Base URL (works for localhost and deployed)
       function baseUrl() {
         return window.location.origin;
       }
@@ -202,25 +286,19 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
 `;
       }
 
-      // ✅ Better logging: auto-scroll only if user is at bottom + cap size
+      // ✅ SSE log: auto-scroll only if user at bottom + cap size
       function log(line) {
         const el = $("events");
-        const atBottom =
-          el.scrollTop + el.clientHeight >= el.scrollHeight - 10;
+        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 10;
 
         el.textContent += line + "\n";
         if (line.startsWith("STATUS")) el.textContent += "\n";
 
-        // Cap log size (prevents UI slowdown)
         const MAX_LINES = 350;
         const lines = el.textContent.split("\n");
-        if (lines.length > MAX_LINES) {
-          el.textContent = lines.slice(-MAX_LINES).join("\n");
-        }
+        if (lines.length > MAX_LINES) el.textContent = lines.slice(-MAX_LINES).join("\n");
 
-        if (atBottom) {
-          el.scrollTop = el.scrollHeight;
-        }
+        if (atBottom) el.scrollTop = el.scrollHeight;
       }
 
       function setSse(v) { $("sseStatus").textContent = v; }
@@ -266,6 +344,66 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
         return await r.json();
       }
 
+      function formatTime(iso) {
+        try {
+          const d = new Date(iso);
+          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        } catch {
+          return "";
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      async function loadHistory() {
+        if (!sessionId) return;
+
+        const r = await fetch(`/v1/sessions/${sessionId}/history`);
+        if (!r.ok) return;
+
+        let items = await r.json();
+        const list = $("historyList");
+        const box = $("historyBox");
+
+        if (!items || items.length === 0) {
+          list.innerHTML = `<div class="small" style="color:#777;">(no messages yet)</div>`;
+          return;
+        }
+
+        // If backend returns newest-first, uncomment:
+        // items = items.slice().reverse();
+
+        const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 10;
+
+        list.innerHTML = items.map((m) => {
+          const role = m.role === "user" ? "user" : "assistant";
+          const roleLabel = role === "user" ? "🧑 user" : "🤖 assistant";
+          const time = m.created_at ? formatTime(m.created_at) : "";
+          const content = escapeHtml(m.content);
+
+          return `
+            <div class="msg-row ${role}">
+              <div class="bubble">
+                <div class="bubble-head">
+                  <span class="role-pill">${roleLabel}</span>
+                  <span class="time">${time}</span>
+                </div>
+                <div class="bubble-body">${content}</div>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        if (atBottom) box.scrollTop = box.scrollHeight;
+      }
+
       function applySessionStatus(status) {
         setVm(status);
 
@@ -288,28 +426,32 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
           setBadge("FAILED", "badge-failed");
           $("send").disabled = true;
           loadSessionMeta()
-            .then(m => showLastError(m.last_error))
+            .then((m) => showLastError(m.last_error))
             .catch(() => showLastError("Session failed"));
+          loadHistory();
         } else if (status === "stopped") {
           setBadge("STOPPED", "badge-stopped");
           $("send").disabled = true;
           hideLastError();
+          loadHistory();
         } else {
           setBadge("IDLE", "badge-idle");
           $("send").disabled = false;
           hideLastError();
+          loadHistory();
         }
       }
 
       function connectSse() {
         if (es) es.close();
         setSse("connecting");
+
         es = new EventSource(`/v1/sessions/${sessionId}/events`);
         es.onopen = () => setSse("connected");
         es.onerror = () => setSse("error");
 
-        ["status","token","tool_call","screenshot","log","message"].forEach(t =>
-          es.addEventListener(t, e => {
+        ["status","token","tool_call","screenshot","log","message"].forEach((t) =>
+          es.addEventListener(t, (e) => {
             log(`${t.toUpperCase()} ${e.data}`);
             if (t === "status") {
               try { applySessionStatus(JSON.parse(e.data).status); } catch {}
@@ -319,19 +461,12 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
         );
       }
 
-      async function loadHistory() {
-        const r = await fetch(`/v1/sessions/${sessionId}/history`);
-        if (!r.ok) return;
-        const h = await r.json();
-        $("history").textContent = h.map(m => `${m.role}: ${m.content}`).join("\n\n");
-      }
-
       async function activateSession(id) {
         sessionId = id;
         localStorage.setItem(STORAGE_KEY, id);
         $("sid").textContent = id;
 
-        setCurlBox(id); // ✅ populate reviewer curls immediately
+        setCurlBox(id);
 
         const meta = await loadSessionMeta();
         setNoVncUrl(meta.novnc_url);
@@ -339,11 +474,15 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
 
         applySessionStatus(meta.status);
         connectSse();
-        loadHistory();
+        await loadHistory();
       }
 
       $("newSession").onclick = async () => {
         const r = await fetch("/v1/sessions", { method: "POST" });
+        if (!r.ok) {
+          log("Failed to create session");
+          return;
+        }
         const s = await r.json();
         activateSession(s.id);
       };
@@ -351,13 +490,24 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
       $("send").onclick = async () => {
         const c = $("msg").value.trim();
         if (!c) return;
+
         $("send").disabled = true;
         $("msg").value = "";
-        await fetch(`/v1/sessions/${sessionId}/messages`, {
+
+        const r = await fetch(`/v1/sessions/${sessionId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: c })
         });
+
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          log("Failed to send message: " + text);
+          $("send").disabled = false;
+          return;
+        }
+
+        await loadHistory();
         applySessionStatus("queued");
       };
 
@@ -369,17 +519,31 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
 
       $("clearSession").onclick = () => {
         if (es) es.close();
+        es = null;
         sessionId = null;
         localStorage.removeItem(STORAGE_KEY);
+        setNoVncUrl("");
         setCurlBox(null);
-        location.reload();
+        $("events").textContent = "";
+        $("historyList").innerHTML = `<div class="small" style="color:#777;">(no messages yet)</div>`;
+        setSse("disconnected");
+        setVm("-");
+        setBadge("—", "badge-idle");
+        hideLastError();
+        $("stopSession").disabled = true;
+        $("send").disabled = true;
+        $("sid").textContent = "-";
       };
 
       (async function init() {
         setNoVncUrl("");
         setCurlBox(null);
+
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) activateSession(saved);
+        if (saved) {
+          log("Restoring session: " + saved);
+          await activateSession(saved);
+        }
       })();
     </script>
   </body>
