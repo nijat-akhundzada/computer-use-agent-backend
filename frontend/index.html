@@ -50,15 +50,21 @@
         border-radius: 8px;
         padding: 10px;
       }
+      code {
+        background: #f3f3f3;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
     </style>
   </head>
   <body>
     <h2>Computer Use Agent — Session Demo</h2>
 
     <div class="box">
-      <div style="display: flex; gap: 10px; align-items: center">
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
         <button id="newSession">New session</button>
         <button id="stopSession" disabled>Stop session</button>
+        <button id="clearSession">Clear session</button>
         <div>Session ID: <b id="sid">-</b></div>
       </div>
       <div class="small" style="margin-top: 6px">
@@ -72,9 +78,11 @@
         <h3>Desktop (noVNC)</h3>
         <iframe id="novnc" src="about:blank"></iframe>
         <div class="small">
-          If the desktop doesn’t load, ensure session creation succeeded and
-          ports are mapped.
+          If the desktop doesn’t load, ensure session creation succeeded and ports are mapped.
         </div>
+
+        <h3 style="margin-top: 16px">Reviewer CURLs</h3>
+        <pre id="curlBox" class="small">(create a session to see curl commands)</pre>
       </div>
 
       <div class="col">
@@ -89,10 +97,7 @@
             style="white-space: pre-wrap; margin-bottom: 10px"
           ></div>
           <div style="display: flex; gap: 10px">
-            <input
-              id="msg"
-              placeholder="e.g. Open browser and search for ..."
-            />
+            <input id="msg" placeholder="e.g. Open browser and search for ..." />
             <button id="send" disabled>Send</button>
           </div>
         </div>
@@ -100,6 +105,8 @@
     </div>
 
     <script>
+      const STORAGE_KEY = "computer_use_demo_session_id";
+
       let sessionId = null;
       let es = null;
 
@@ -113,12 +120,46 @@
         el.scrollTop = el.scrollHeight;
       }
 
+      function resetUi() {
+        $("sid").textContent = "-";
+        $("novnc").src = "about:blank";
+        $("history").textContent = "";
+        $("events").textContent = "";
+        $("curlBox").textContent = "(create a session to see curl commands)";
+        $("send").disabled = true;
+        $("stopSession").disabled = true;
+        setSse("disconnected");
+        setVm("-");
+      }
+
       function setSse(status) {
         $("sseStatus").textContent = status;
       }
 
       function setVm(status) {
         $("vmStatus").textContent = status;
+      }
+
+      function setCurlBox() {
+        if (!sessionId) return;
+        $("curlBox").textContent =
+`# Create session
+curl -s -X POST http://localhost:8000/v1/sessions | python -m json.tool
+
+# Stream events (SSE)
+curl -N http://localhost:8000/v1/sessions/${sessionId}/events
+
+# Send message
+curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/messages \\
+  -H "Content-Type: application/json" \\
+  -d '{"content":"Open browser and search for..."}' | python -m json.tool
+
+# History
+curl -s http://localhost:8000/v1/sessions/${sessionId}/history | python -m json.tool
+
+# Stop session
+curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m json.tool
+`;
       }
 
       async function loadHistory() {
@@ -130,8 +171,16 @@
         $("history").textContent = out || "(no messages yet)";
       }
 
+      async function loadSessionMeta() {
+        const r = await fetch(`/v1/sessions/${sessionId}`);
+        if (!r.ok) throw new Error("Session not found");
+        return await r.json();
+      }
+
       function connectSse() {
+        if (!sessionId) return;
         if (es) es.close();
+
         setSse("connecting");
         es = new EventSource(`/v1/sessions/${sessionId}/events`);
 
@@ -141,18 +190,13 @@
         // default message channel
         es.onmessage = (e) => log(`EVENT ${e.data}`);
 
-        const eventTypes = [
-          "status",
-          "token",
-          "tool_call",
-          "screenshot",
-          "log",
-          "message",
-        ];
+        const eventTypes = ["status", "token", "tool_call", "screenshot", "log", "message"];
         for (const t of eventTypes) {
           es.addEventListener(t, (e) => {
             log(`${t.toUpperCase()} ${e.data}`);
+
             if (t === "message") loadHistory();
+
             if (t === "status") {
               try {
                 const s = JSON.parse(e.data);
@@ -161,6 +205,30 @@
             }
           });
         }
+      }
+
+      async function activateSession(id) {
+        sessionId = id;
+        $("sid").textContent = sessionId;
+        localStorage.setItem(STORAGE_KEY, sessionId);
+        setCurlBox();
+
+        try {
+          const meta = await loadSessionMeta();
+          $("novnc").src = meta.novnc_url || "about:blank";
+          $("send").disabled = false;
+          $("stopSession").disabled = false;
+          setVm(meta.status || "-");
+        } catch (e) {
+          log("Failed to load session meta: " + e);
+          // session might be deleted; clear storage
+          localStorage.removeItem(STORAGE_KEY);
+          sessionId = null;
+          return;
+        }
+
+        connectSse();
+        await loadHistory();
       }
 
       $("newSession").onclick = async () => {
@@ -175,17 +243,7 @@
           return;
         }
         const s = await r.json();
-        sessionId = s.id;
-        $("sid").textContent = sessionId;
-
-        // show noVNC desktop
-        $("novnc").src = s.novnc_url || "about:blank";
-
-        $("send").disabled = false;
-        $("stopSession").disabled = false;
-
-        connectSse();
-        await loadHistory();
+        await activateSession(s.id);
       };
 
       $("send").onclick = async () => {
@@ -201,7 +259,8 @@
         });
 
         if (!r.ok) {
-          log("Failed to send message");
+          const text = await r.text().catch(() => "");
+          log("Failed to send message: " + text);
           return;
         }
         await loadHistory();
@@ -210,13 +269,33 @@
       $("stopSession").onclick = async () => {
         if (!sessionId) return;
         await fetch(`/v1/sessions/${sessionId}/stop`, { method: "POST" });
-        $("send").disabled = true;
-        $("stopSession").disabled = true;
+
         if (es) es.close();
         setSse("disconnected");
         setVm("stopped");
+        $("send").disabled = true;
+        $("stopSession").disabled = true;
+
         log("Stopped session");
       };
+
+      $("clearSession").onclick = async () => {
+        if (es) es.close();
+        es = null;
+        sessionId = null;
+        localStorage.removeItem(STORAGE_KEY);
+        resetUi();
+      };
+
+      // Auto-reconnect on refresh
+      (async function init() {
+        resetUi();
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          log("Restoring session from localStorage: " + saved);
+          await activateSession(saved);
+        }
+      })();
     </script>
   </body>
 </html>
