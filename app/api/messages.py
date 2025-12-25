@@ -1,10 +1,10 @@
 from uuid import UUID
 
-from api.core.auth import require_api_key
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as OrmSession
 
 from app.api.schemas import MessageIn, MessageOut
+from app.core.auth import require_api_key
 from app.core.db import get_db
 from app.core.events import publish_event
 from app.core.queue import enqueue
