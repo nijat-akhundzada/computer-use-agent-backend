@@ -62,7 +62,7 @@ def run_mock_turn(
     )
 
     final_text = (
-        "🧪 Mock agent response.\n\n"
+        "Mock agent response.\n\n"
         f"I received your instruction:\n"
         f"“{user_text}”\n\n"
         "In real mode, the computer-use agent would now control the VM."
