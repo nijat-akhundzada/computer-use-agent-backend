@@ -6,14 +6,14 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session as OrmSession
 
+from app.core.events import publish_event
+from app.models.message import Message as MessageModel
+
 # IMPORTANT:
 # This module expects you vendored upstream into vendor/computer_use_demo
 # and that it exposes an agent loop function (often named sampling_loop or similar).
 # If upstream changes, you only edit THIS adapter.
 from vendor.computer_use_demo import loop as demo_loop  # type: ignore
-
-from app.core.events import publish_event
-from app.models.message import Message as MessageModel
 
 
 @dataclass

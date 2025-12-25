@@ -15,6 +15,7 @@ services:
       - redis
     volumes:
       - ./app:/app/app
+      - ./vendor:/app/vendor
       - ./migrations:/app/migrations
       - ./alembic.ini:/app/alembic.ini
       - /var/run/docker.sock:/var/run/docker.sock
@@ -35,6 +36,7 @@ services:
       - redis
     volumes:
       - ./app:/app/app
+      - ./vendor:/app/vendor
       - /var/run/docker.sock:/var/run/docker.sock
 
   db:
