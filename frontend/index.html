@@ -171,10 +171,40 @@
 
       const $ = (id) => document.getElementById(id);
 
+      // Base URL (works for localhost and deployed)
+      function baseUrl() {
+        return window.location.origin;
+      }
+
+      function setCurlBox(id) {
+        if (!id) {
+          $("curlBox").textContent = "(create a session to see curl commands)";
+          return;
+        }
+        const B = baseUrl();
+        $("curlBox").textContent =
+`# Create session
+curl -s -X POST ${B}/v1/sessions | python -m json.tool
+
+# Stream events (SSE)
+curl -N ${B}/v1/sessions/${id}/events
+
+# Send message
+curl -s -X POST ${B}/v1/sessions/${id}/messages \\
+  -H "Content-Type: application/json" \\
+  -d '{"content":"Open browser and search for..."}' | python -m json.tool
+
+# Get chat history
+curl -s ${B}/v1/sessions/${id}/history | python -m json.tool
+
+# Stop session
+curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
+`;
+      }
+
       // ✅ Better logging: auto-scroll only if user is at bottom + cap size
       function log(line) {
         const el = $("events");
-
         const atBottom =
           el.scrollTop + el.clientHeight >= el.scrollHeight - 10;
 
@@ -301,6 +331,8 @@
         localStorage.setItem(STORAGE_KEY, id);
         $("sid").textContent = id;
 
+        setCurlBox(id); // ✅ populate reviewer curls immediately
+
         const meta = await loadSessionMeta();
         setNoVncUrl(meta.novnc_url);
         $("stopSession").disabled = false;
@@ -339,11 +371,13 @@
         if (es) es.close();
         sessionId = null;
         localStorage.removeItem(STORAGE_KEY);
+        setCurlBox(null);
         location.reload();
       };
 
       (async function init() {
         setNoVncUrl("");
+        setCurlBox(null);
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) activateSession(saved);
       })();
