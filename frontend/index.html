@@ -21,14 +21,28 @@
         border: 1px solid #ccc;
         border-radius: 8px;
       }
+
+      /* ✅ Live Events (SSE) styling */
       pre {
-        height: 220px;
-        overflow: auto;
+        height: 260px;
+        overflow-y: auto;
+        overflow-x: hidden;
+
         border: 1px solid #ddd;
-        padding: 8px;
+        padding: 10px;
         border-radius: 8px;
         background: #fafafa;
+
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.45;
+
+        white-space: pre-wrap;
+        word-break: break-word;
+
+        overscroll-behavior: contain;
       }
+
       input {
         width: 100%;
         padding: 10px;
@@ -71,6 +85,9 @@
       .badge-failed { background: #f8d7da; border-color: #f1aeb5; }
       .badge-stopped { background: #e2e3e5; border-color: #d3d6d8; }
       .badge-queued { background: #d1ecf1; border-color: #bee5eb; }
+
+      a { color: #0b5fff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
@@ -105,7 +122,21 @@
     <div class="row" style="margin-top:16px;">
       <div class="col">
         <h3>Desktop (noVNC)</h3>
+
+        <div class="box" style="margin-bottom:10px;">
+          <div class="small">Desktop URL (noVNC):</div>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+            <a id="novncLink" href="#" target="_blank" rel="noopener noreferrer">Open desktop in new tab</a>
+            <span class="small" id="novncUrlText">-</span>
+          </div>
+          <div class="small" style="margin-top:6px;">
+            Note: embedding noVNC in an iframe is often blocked by X-Frame-Options / CSP. Opening in a new tab is the reliable approach.
+          </div>
+        </div>
+
+        <!-- Best-effort: may remain blank due to iframe restrictions -->
         <iframe id="novnc" src="about:blank"></iframe>
+
         <div class="small">
           If the desktop doesn’t load, ensure session creation succeeded and ports are mapped.
         </div>
@@ -140,9 +171,26 @@
 
       const $ = (id) => document.getElementById(id);
 
+      // ✅ Better logging: auto-scroll only if user is at bottom + cap size
       function log(line) {
-        $("events").textContent += line + "\n";
-        $("events").scrollTop = $("events").scrollHeight;
+        const el = $("events");
+
+        const atBottom =
+          el.scrollTop + el.clientHeight >= el.scrollHeight - 10;
+
+        el.textContent += line + "\n";
+        if (line.startsWith("STATUS")) el.textContent += "\n";
+
+        // Cap log size (prevents UI slowdown)
+        const MAX_LINES = 350;
+        const lines = el.textContent.split("\n");
+        if (lines.length > MAX_LINES) {
+          el.textContent = lines.slice(-MAX_LINES).join("\n");
+        }
+
+        if (atBottom) {
+          el.scrollTop = el.scrollHeight;
+        }
       }
 
       function setSse(v) { $("sseStatus").textContent = v; }
@@ -161,6 +209,25 @@
       function showLastError(msg) {
         $("lastErrorText").textContent = msg || "(unknown error)";
         $("lastErrorBox").style.display = "block";
+      }
+
+      function setNoVncUrl(url) {
+        const u = url || "";
+        $("novncUrlText").textContent = u || "-";
+
+        const link = $("novncLink");
+        if (u) {
+          link.href = u;
+          link.style.pointerEvents = "auto";
+          link.style.opacity = "1";
+        } else {
+          link.href = "#";
+          link.style.pointerEvents = "none";
+          link.style.opacity = "0.6";
+        }
+
+        // Best-effort iframe (often blocked)
+        $("novnc").src = u || "about:blank";
       }
 
       async function loadSessionMeta() {
@@ -233,9 +300,11 @@
         sessionId = id;
         localStorage.setItem(STORAGE_KEY, id);
         $("sid").textContent = id;
+
         const meta = await loadSessionMeta();
-        $("novnc").src = meta.novnc_url || "about:blank";
+        setNoVncUrl(meta.novnc_url);
         $("stopSession").disabled = false;
+
         applySessionStatus(meta.status);
         connectSse();
         loadHistory();
@@ -274,6 +343,7 @@
       };
 
       (async function init() {
+        setNoVncUrl("");
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) activateSession(saved);
       })();
