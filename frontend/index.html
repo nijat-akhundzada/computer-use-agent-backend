@@ -55,6 +55,22 @@
         padding: 2px 6px;
         border-radius: 6px;
       }
+
+      /* Status badge */
+      .badge {
+        display: inline-block;
+        margin-left: 10px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid #ddd;
+        user-select: none;
+      }
+      .badge-idle { background: #f5f5f5; }
+      .badge-busy { background: #fff3cd; border-color: #ffe69c; }
+      .badge-failed { background: #f8d7da; border-color: #f1aeb5; }
+      .badge-stopped { background: #e2e3e5; border-color: #d3d6d8; }
+      .badge-queued { background: #d1ecf1; border-color: #bee5eb; }
     </style>
   </head>
   <body>
@@ -65,8 +81,13 @@
         <button id="newSession">New session</button>
         <button id="stopSession" disabled>Stop session</button>
         <button id="clearSession">Clear session</button>
-        <div>Session ID: <b id="sid">-</b></div>
+
+        <div>
+          Session ID: <b id="sid">-</b>
+          <span id="badge" class="badge badge-idle">—</span>
+        </div>
       </div>
+
       <div class="small" style="margin-top: 6px">
         SSE: <span id="sseStatus">disconnected</span> · VM:
         <span id="vmStatus">-</span>
@@ -120,24 +141,56 @@
         el.scrollTop = el.scrollHeight;
       }
 
+      function setSse(status) {
+        $("sseStatus").textContent = status;
+      }
+
+      function setBadge(text, cls) {
+        const b = $("badge");
+        if (!b) return;
+        b.textContent = text;
+        b.className = `badge ${cls}`;
+      }
+
+      function applySessionStatus(status) {
+        $("vmStatus").textContent = status || "-";
+
+        // If we don't have a session yet, keep safe defaults
+        if (!sessionId) {
+          setBadge("—", "badge-idle");
+          $("send").disabled = true;
+          return;
+        }
+
+        // Disable send while queued/running to avoid concurrent turns (no race conditions)
+        if (status === "running") {
+          setBadge("BUSY", "badge-busy");
+          $("send").disabled = true;
+        } else if (status === "queued") {
+          setBadge("QUEUED", "badge-queued");
+          $("send").disabled = true;
+        } else if (status === "failed") {
+          setBadge("FAILED", "badge-failed");
+          $("send").disabled = true;
+        } else if (status === "stopped") {
+          setBadge("STOPPED", "badge-stopped");
+          $("send").disabled = true;
+        } else {
+          // idle or unknown
+          setBadge("IDLE", "badge-idle");
+          $("send").disabled = false;
+        }
+      }
+
       function resetUi() {
         $("sid").textContent = "-";
         $("novnc").src = "about:blank";
         $("history").textContent = "";
         $("events").textContent = "";
         $("curlBox").textContent = "(create a session to see curl commands)";
-        $("send").disabled = true;
         $("stopSession").disabled = true;
         setSse("disconnected");
-        setVm("-");
-      }
-
-      function setSse(status) {
-        $("sseStatus").textContent = status;
-      }
-
-      function setVm(status) {
-        $("vmStatus").textContent = status;
+        applySessionStatus(null);
       }
 
       function setCurlBox() {
@@ -200,7 +253,7 @@ curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m 
             if (t === "status") {
               try {
                 const s = JSON.parse(e.data);
-                setVm(s.status || "-");
+                applySessionStatus(s.status || null);
               } catch {}
             }
           });
@@ -216,14 +269,13 @@ curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m 
         try {
           const meta = await loadSessionMeta();
           $("novnc").src = meta.novnc_url || "about:blank";
-          $("send").disabled = false;
           $("stopSession").disabled = false;
-          setVm(meta.status || "-");
+          applySessionStatus(meta.status || "idle");
         } catch (e) {
           log("Failed to load session meta: " + e);
-          // session might be deleted; clear storage
           localStorage.removeItem(STORAGE_KEY);
           sessionId = null;
+          resetUi();
           return;
         }
 
@@ -235,7 +287,7 @@ curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m 
         $("events").textContent = "";
         $("history").textContent = "";
         setSse("disconnected");
-        setVm("-");
+        applySessionStatus(null);
 
         const r = await fetch("/v1/sessions", { method: "POST" });
         if (!r.ok) {
@@ -248,8 +300,12 @@ curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m 
 
       $("send").onclick = async () => {
         if (!sessionId) return;
+
         const content = $("msg").value.trim();
         if (!content) return;
+
+        // UI optimistic lock to avoid spamming
+        $("send").disabled = true;
 
         $("msg").value = "";
         const r = await fetch(`/v1/sessions/${sessionId}/messages`, {
@@ -261,8 +317,13 @@ curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m 
         if (!r.ok) {
           const text = await r.text().catch(() => "");
           log("Failed to send message: " + text);
+          // allow retry if still idle (status events will override)
+          $("send").disabled = false;
           return;
         }
+
+        // the server will emit status=queued shortly; but keep UI responsive
+        applySessionStatus("queued");
         await loadHistory();
       };
 
@@ -272,8 +333,7 @@ curl -s -X POST http://localhost:8000/v1/sessions/${sessionId}/stop | python -m 
 
         if (es) es.close();
         setSse("disconnected");
-        setVm("stopped");
-        $("send").disabled = true;
+        applySessionStatus("stopped");
         $("stopSession").disabled = true;
 
         log("Stopped session");
