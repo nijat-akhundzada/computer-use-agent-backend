@@ -74,6 +74,17 @@ The focus of this project is **backend architecture, correctness, and scalabilit
   - session status badge
   - last error (on failure)
 
+### Optional API authentication
+
+The backend supports optional API key protection.
+
+If the `API_KEY` environment variable is set, all write endpoints
+(e.g. create session, send message, stop session) require the header:
+
+````http
+X-API-Key: <your-api-key>
+
+
 ---
 
 ## 3. Repository Structure
@@ -99,7 +110,7 @@ computer-use-backend/
 ├── docker-compose.yml
 ├── pyproject.toml
 └── README.md
-```
+````
 
 ---
 
