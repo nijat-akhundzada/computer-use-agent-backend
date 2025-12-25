@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Computer Use Backend Demo</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Arial;
+        margin: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+      }
+      .col {
+        flex: 1;
+      }
+      iframe {
+        width: 100%;
+        height: 520px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+      }
+      pre {
+        height: 220px;
+        overflow: auto;
+        border: 1px solid #ddd;
+        padding: 8px;
+        border-radius: 8px;
+        background: #fafafa;
+      }
+      input {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+      }
+      button {
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        cursor: pointer;
+      }
+      .small {
+        color: #666;
+        font-size: 12px;
+      }
+      .box {
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Computer Use Agent — Session Demo</h2>
+
+    <div class="box">
+      <div style="display: flex; gap: 10px; align-items: center">
+        <button id="newSession">New session</button>
+        <button id="stopSession" disabled>Stop session</button>
+        <div>Session ID: <b id="sid">-</b></div>
+      </div>
+      <div class="small" style="margin-top: 6px">
+        SSE: <span id="sseStatus">disconnected</span> · VM:
+        <span id="vmStatus">-</span>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 16px">
+      <div class="col">
+        <h3>Desktop (noVNC)</h3>
+        <iframe id="novnc" src="about:blank"></iframe>
+        <div class="small">
+          If the desktop doesn’t load, ensure session creation succeeded and
+          ports are mapped.
+        </div>
+      </div>
+
+      <div class="col">
+        <h3>Live Events (SSE)</h3>
+        <pre id="events"></pre>
+
+        <h3 style="margin-top: 16px">Chat</h3>
+        <div class="box">
+          <div
+            id="history"
+            class="small"
+            style="white-space: pre-wrap; margin-bottom: 10px"
+          ></div>
+          <div style="display: flex; gap: 10px">
+            <input
+              id="msg"
+              placeholder="e.g. Open browser and search for ..."
+            />
+            <button id="send" disabled>Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let sessionId = null;
+      let es = null;
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+
+      function log(line) {
+        const el = $("events");
+        el.textContent += line + "\n";
+        el.scrollTop = el.scrollHeight;
+      }
+
+      function setSse(status) {
+        $("sseStatus").textContent = status;
+      }
+
+      function setVm(status) {
+        $("vmStatus").textContent = status;
+      }
+
+      async function loadHistory() {
+        if (!sessionId) return;
+        const r = await fetch(`/v1/sessions/${sessionId}/history`);
+        if (!r.ok) return;
+        const items = await r.json();
+        const out = items.map((m) => `${m.role}: ${m.content}`).join("\n\n");
+        $("history").textContent = out || "(no messages yet)";
+      }
+
+      function connectSse() {
+        if (es) es.close();
+        setSse("connecting");
+        es = new EventSource(`/v1/sessions/${sessionId}/events`);
+
+        es.onopen = () => setSse("connected");
+        es.onerror = () => setSse("error");
+
+        // default message channel
+        es.onmessage = (e) => log(`EVENT ${e.data}`);
+
+        const eventTypes = [
+          "status",
+          "token",
+          "tool_call",
+          "screenshot",
+          "log",
+          "message",
+        ];
+        for (const t of eventTypes) {
+          es.addEventListener(t, (e) => {
+            log(`${t.toUpperCase()} ${e.data}`);
+            if (t === "message") loadHistory();
+            if (t === "status") {
+              try {
+                const s = JSON.parse(e.data);
+                setVm(s.status || "-");
+              } catch {}
+            }
+          });
+        }
+      }
+
+      $("newSession").onclick = async () => {
+        $("events").textContent = "";
+        $("history").textContent = "";
+        setSse("disconnected");
+        setVm("-");
+
+        const r = await fetch("/v1/sessions", { method: "POST" });
+        if (!r.ok) {
+          log("Failed to create session");
+          return;
+        }
+        const s = await r.json();
+        sessionId = s.id;
+        $("sid").textContent = sessionId;
+
+        // show noVNC desktop
+        $("novnc").src = s.novnc_url || "about:blank";
+
+        $("send").disabled = false;
+        $("stopSession").disabled = false;
+
+        connectSse();
+        await loadHistory();
+      };
+
+      $("send").onclick = async () => {
+        if (!sessionId) return;
+        const content = $("msg").value.trim();
+        if (!content) return;
+
+        $("msg").value = "";
+        const r = await fetch(`/v1/sessions/${sessionId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
+
+        if (!r.ok) {
+          log("Failed to send message");
+          return;
+        }
+        await loadHistory();
+      };
+
+      $("stopSession").onclick = async () => {
+        if (!sessionId) return;
+        await fetch(`/v1/sessions/${sessionId}/stop`, { method: "POST" });
+        $("send").disabled = true;
+        $("stopSession").disabled = true;
+        if (es) es.close();
+        setSse("disconnected");
+        setVm("stopped");
+        log("Stopped session");
+      };
+    </script>
+  </body>
+</html>

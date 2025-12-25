@@ -13,7 +13,7 @@ from app.models.message import Message as MessageModel
 # This module expects you vendored upstream into vendor/computer_use_demo
 # and that it exposes an agent loop function (often named sampling_loop or similar).
 # If upstream changes, you only edit THIS adapter.
-from vendor.computer_use_demo import loop as demo_loop  # type: ignore
+import vendor.computer_use_demo.loop as demo_loop  # type: ignore
 
 
 @dataclass
