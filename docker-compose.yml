@@ -16,6 +16,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./vendor:/app/vendor
+      - ./frontend:/app/frontend
       - ./migrations:/app/migrations
       - ./alembic.ini:/app/alembic.ini
       - /var/run/docker.sock:/var/run/docker.sock
