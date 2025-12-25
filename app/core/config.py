@@ -12,6 +12,7 @@ class Settings(BaseSettings):
         "ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest"
     )
     AGENT_MODE: str = "mock"  # "mock" or "anthropic"
+    API_KEY: str | None = None
 
 
 settings = Settings()

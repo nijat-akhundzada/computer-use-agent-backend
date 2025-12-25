@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from api.core.auth import require_api_key
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as OrmSession
 
@@ -14,7 +15,12 @@ router = APIRouter(prefix="/v1/sessions", tags=["messages"])
 
 
 @router.post("/{session_id}/messages", response_model=MessageOut)
-def post_message(session_id: UUID, body: MessageIn, db: OrmSession = Depends(get_db)):
+def post_message(
+    session_id: UUID,
+    body: MessageIn,
+    db: OrmSession = Depends(get_db),
+    _=Depends(require_api_key),
+):
     s = db.get(SessionModel, session_id)
     if not s:
         raise HTTPException(404, "Session not found")

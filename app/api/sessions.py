@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
 from app.api.schemas import SessionOut
+from app.core.auth import require_api_key
 from app.core.db import get_db
 from app.models.session import Session as SessionModel
 from app.session_runner.docker_manager import DockerSessionManager
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/v1/sessions", tags=["sessions"])
 
 
 @router.post("", response_model=SessionOut)
-def create_session(db: OrmSession = Depends(get_db)):
+def create_session(db: OrmSession = Depends(get_db), _=Depends(require_api_key)):
     s = SessionModel(status="creating")
     db.add(s)
     db.commit()
@@ -57,7 +58,9 @@ def list_sessions(db: OrmSession = Depends(get_db)):
 
 
 @router.post("/{session_id}/stop", response_model=SessionOut)
-def stop_session(session_id: UUID, db: OrmSession = Depends(get_db)):
+def stop_session(
+    session_id: UUID, db: OrmSession = Depends(get_db), _=Depends(require_api_key)
+):
     s = db.get(SessionModel, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
