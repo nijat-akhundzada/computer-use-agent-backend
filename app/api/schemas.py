@@ -23,7 +23,7 @@ class MessageIn(BaseModel):
 
 
 class MessageOut(BaseModel):
-    id: UUID
+    id: int
     session_id: UUID
     role: str
     content: str

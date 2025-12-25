@@ -11,9 +11,7 @@ from app.core.db import Base
 class Message(Base):
     __tablename__ = "messages"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), index=True
     )

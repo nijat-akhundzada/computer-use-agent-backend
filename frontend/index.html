@@ -377,14 +377,11 @@ curl -s -X POST ${B}/v1/sessions/${id}/stop | python -m json.tool
           return;
         }
 
-        // If backend returns newest-first, uncomment:
-        // items = items.slice().reverse();
-
         const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 10;
 
         list.innerHTML = items.map((m) => {
           const role = m.role === "user" ? "user" : "assistant";
-          const roleLabel = role === "user" ? "🧑 user" : "🤖 assistant";
+          const roleLabel = role === "user" ? "user" : "assistant";
           const time = m.created_at ? formatTime(m.created_at) : "";
           const content = escapeHtml(m.content);
 

@@ -18,6 +18,7 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 from app.core.config import settings  # noqa: E402
 from app.core.db import Base  # noqa: E402
+from app.models import Session, Message, Event
 
 target_metadata = Base.metadata
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

@@ -21,7 +21,7 @@ def history(session_id: UUID, db: OrmSession = Depends(get_db)):
         db.execute(
             select(MessageModel)
             .where(MessageModel.session_id == session_id)
-            .order_by(MessageModel.created_at.asc())
+            .order_by(MessageModel.id.asc())
         )
         .scalars()
         .all()
