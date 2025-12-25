@@ -18,8 +18,6 @@ def _handle_job(job: dict):
 
     lock = acquire_session_lock(session_id, ttl_seconds=180)
     if not lock:
-        # Another run is in progress; re-enqueue for later
-        # (simple backoff to avoid tight loops)
         time.sleep(1)
         from app.core.queue import enqueue
 
@@ -32,18 +30,33 @@ def _handle_job(job: dict):
         if not s or s.status in ("stopped", "failed"):
             return
 
-        # mark running
+        # mark running (DB first)
         s.status = "running"
         db.commit()
+
+        # emit status immediately, once
+        publish_event(
+            db=db, session_id=s.id, event_type="status", payload={"status": "running"}
+        )
+
         user_msg = db.get(MessageModel, message_id)
         user_text = user_msg.content if user_msg else ""
 
+        # progress streaming (OK to keep as demo)
+        publish_event(
+            db=db,
+            session_id=s.id,
+            event_type="log",
+            payload={"msg": "Starting agent turn"},
+        )
+        time.sleep(0.3)
+        publish_event(
+            db=db, session_id=s.id, event_type="token", payload={"delta": "Thinking..."}
+        )
+
         if settings.AGENT_MODE == "mock":
-            run_mock_turn(
-                db=db,
-                session_id=s.id,
-                user_text=user_text,
-            )
+            # mock agent should write assistant messages itself
+            run_mock_turn(db=db, session_id=s.id, user_text=user_text)
         else:
             import os
 
@@ -67,42 +80,10 @@ def _handle_job(job: dict):
             )
 
         publish_event(
-            db=db, session_id=s.id, event_type="status", payload={"status": "running"}
-        )
-
-        # simulate progress streaming (replace with real agent loop later)
-        publish_event(
-            db=db,
-            session_id=s.id,
-            event_type="log",
-            payload={"msg": "Starting agent turn"},
-        )
-        time.sleep(0.5)
-        publish_event(
-            db=db, session_id=s.id, event_type="token", payload={"delta": "Thinking..."}
-        )
-        time.sleep(0.8)
-        publish_event(
             db=db,
             session_id=s.id,
             event_type="log",
             payload={"msg": f"Processed message_id={message_id}"},
-        )
-
-        # write assistant message
-        assistant_text = (
-            "Stub response: worker processed your request. "
-            "Next step will integrate computer-use agent."
-        )
-        am = MessageModel(session_id=s.id, role="assistant", content=assistant_text)
-        db.add(am)
-        db.commit()
-
-        publish_event(
-            db=db,
-            session_id=s.id,
-            event_type="message",
-            payload={"role": "assistant", "content": assistant_text},
         )
 
         # back to idle
@@ -111,6 +92,7 @@ def _handle_job(job: dict):
         publish_event(
             db=db, session_id=s.id, event_type="status", payload={"status": "idle"}
         )
+
     except Exception as e:
         try:
             s = db.get(SessionModel, session_id)
