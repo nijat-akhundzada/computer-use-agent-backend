@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.debug_events import router as debug_router
 from app.api.health import router as health_router
@@ -15,3 +16,5 @@ app.include_router(streaming_router)
 app.include_router(debug_router)
 app.include_router(messages_router)
 app.include_router(history_router)
+
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
