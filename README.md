@@ -81,9 +81,9 @@ The backend supports optional API key protection.
 If the `API_KEY` environment variable is set, all write endpoints
 (e.g. create session, send message, stop session) require the header:
 
-````http
+```http
 X-API-Key: <your-api-key>
-
+```
 
 ---
 
@@ -110,7 +110,7 @@ computer-use-backend/
 ├── docker-compose.yml
 ├── pyproject.toml
 └── README.md
-````
+```
 
 ---
 
