@@ -111,6 +111,22 @@ def _handle_job(job: dict):
         publish_event(
             db=db, session_id=s.id, event_type="status", payload={"status": "idle"}
         )
+    except Exception as e:
+        try:
+            s = db.get(SessionModel, session_id)
+            if s:
+                s.status = "failed"
+                s.last_error = str(e)
+                db.commit()
+                publish_event(
+                    db=db,
+                    session_id=s.id,
+                    event_type="status",
+                    payload={"status": "failed", "error": str(e)},
+                )
+        except Exception:
+            pass
+        raise
     finally:
         db.close()
         release_session_lock(lock)
