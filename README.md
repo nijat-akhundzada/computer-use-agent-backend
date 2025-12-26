@@ -23,6 +23,9 @@ The system replaces the original experimental Streamlit UI with a **production-s
 
 The focus of this project is **backend architecture, correctness, and scalability**, not UI complexity.
 
+###  Demo Video
+ https://drive.google.com/file/d/1SYdjY1wnc5mvmpuH_mZcMOQEL_7uYRpn/view?usp=sharing
+ 
 ---
 
 ## 2. Key Features
